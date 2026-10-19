@@ -1,0 +1,1 @@
+Jalankan `PHP_BIN=php python3 tests/test_dashboard.py` dari root proyek. Tes membuat storage dan server sementara. Jangan gunakan storage produksi untuk tes manual/browser. Lihat README utama untuk validasi Windows/XAMPP.
