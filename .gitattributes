@@ -1,0 +1,2 @@
+# Simpan CRLF launcher CMD apa adanya, termasuk pada arsip ZIP GitHub.
+*.cmd -text whitespace=cr-at-eol

@@ -3,6 +3,8 @@ import concurrent.futures
 import http.cookiejar
 import json
 import os
+import queue
+import re
 from pathlib import Path
 import socket
 import subprocess
@@ -12,6 +14,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -212,5 +215,45 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(run('echo storageLocation();'),custom)
         self.assertEqual(run("$_SERVER['DOCUMENT_ROOT']="+document_root+";echo storage();"),custom)
         self.assertEqual(run("echo defaultStorageLocation('D:/xampp/HTDOCS/tools/HAY');"),'D:/xampp/hay-private')
+
+    def test_10_cmd_setup_wizard_local_token_and_shutdown(self):
+        with tempfile.TemporaryDirectory(prefix='hay-wizard-') as temp:
+            private=str(Path(temp)/'private')
+            env=dict(os.environ,HAY_STORAGE=private)
+            p=subprocess.Popen([PHP,'-n',str(ROOT/'bin/setup-console.php')],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+            lines=queue.Queue()
+            def reader():
+                for line in p.stdout:lines.put(line)
+            threading.Thread(target=reader,daemon=True).start()
+            try:
+                output=[];url=None
+                for _ in range(20):
+                    line=lines.get(timeout=10);output.append(line)
+                    if line.startswith('http://'):url=line.strip();break
+                    if line.startswith('ERROR:'):self.fail(''.join(output))
+                self.assertIsNotNone(url)
+                origin=urllib.parse.urlsplit(url);origin=origin.scheme+'://'+origin.netloc
+                def request(url,body=None,origin_header=None):
+                    headers={};data=None
+                    if body is not None:
+                        data=urllib.parse.urlencode(body).encode();headers={'Content-Type':'application/x-www-form-urlencoded','Origin':origin_header or origin}
+                    try:r=urllib.request.urlopen(urllib.request.Request(url,data=data,headers=headers),timeout=5)
+                    except urllib.error.HTTPError as e:r=e
+                    return r.status,r.read().decode()
+                self.assertEqual(request(origin+'/?token=wrong')[0],403)
+                code,html=request(url);self.assertEqual(code,200);self.assertIn('type="password"',html)
+                body={'username':'wizardadmin','password':'Wizard-test-password-42','confirm':'Wizard-test-password-42'}
+                self.assertEqual(request(url,body,'http://evil.example')[0],403)
+                wrong=dict(body,confirm='different')
+                self.assertIn('tidak sama',request(url,wrong)[1]);self.assertFalse((Path(private)/'auth.json').exists())
+                code,html=request(url,body);self.assertEqual(code,200);self.assertIn('Akun berhasil disimpan',html)
+                auth=json.loads((Path(private)/'auth.json').read_text());self.assertEqual(auth['username'],'wizardadmin');self.assertNotIn(body['password'],json.dumps(auth))
+                self.assertEqual(request(url)[0],410)
+                self.assertEqual(p.wait(timeout=10),0)
+                with self.assertRaises(urllib.error.URLError):urllib.request.urlopen(url,timeout=2)
+                self.assertFalse(list(Path(private).glob('.setup-*')))
+            finally:
+                if p.poll() is None:p.terminate();p.wait(timeout=5)
+                p.stdout.close()
 
 if __name__=='__main__':unittest.main(verbosity=2)

@@ -73,58 +73,75 @@ Gunakan path absolut di luar document root; biarkan `null` untuk deteksi otomati
 
 Folder privat ditolak aplikasi jika terletak di dalam document root. Skrip setup memberi ACL terbatas pada folder privat yang baru dibuat (akun setup, SYSTEM, dan Administrators); ACL folder yang sudah ada tidak ditimpa. Jika Apache/collector memakai akun berbeda, beri izin hanya pada akun tersebut. Periksa NTFS ACL agar hanya akun yang berwenang dapat membaca/menulisnya. Apache/collector tidak perlu dijalankan sebagai Administrator. Izin CIM perlu diverifikasi untuk akun collector yang dipakai.
 
-### 2. Buat akun admin
+### 2. Buat akun melalui CMD (tanpa membuka PowerShell)
 
-Buka Windows PowerShell, gunakan akun Windows yang akan menjalankan collector:
+Buka folder `C:\xampp\htdocs\HAY\bin` di File Explorer. Klik dua kali **`setup.cmd`**, atau buka CMD di folder tersebut dan jalankan:
 
-```powershell
-cd C:\xampp\htdocs\HAY
-.\bin\setup.ps1
+```bat
+setup.cmd
 ```
 
-Masukkan password **12–72 byte** (gunakan passphrase panjang). Input disembunyikan dan dikirim melalui stdin, bukan argumen proses. Tidak ada password default. Jika lokasi XAMPP berbeda:
+Launcher mencari `php.exe` dari folder XAMPP di atas lokasi proyek, kemudian `C:\xampp`, lalu PATH. Jika tidak ditemukan, di CMD yang sama atur lokasi PHP:
 
-```powershell
-.\bin\setup.ps1 -Php 'D:\xampp\php\php.exe' -Username 'pemilik'
+```bat
+set "HAY_PHP=D:\lokasi-xampp\php\php.exe"
+setup.cmd
 ```
 
-Lokasi data mengikuti deteksi otomatis atau `src/settings.php`; tidak perlu mengubah konfigurasi Apache atau restart Apache untuk pengaturan default ini.
+Lokasi folder proyek di drive D tidak berarti XAMPP juga di D. Gunakan lokasi executable PHP yang sebenarnya, versi 8.1 atau lebih baru.
 
-Jika kebijakan Windows menolak skrip, periksa/tandatangani skrip sesuai kebijakan komputer/organisasi. Jangan mematikan kebijakan verifikasi secara global. File hasil unduhan mungkin memerlukan peninjauan dan penghapusan tanda blokir melalui Properties setelah Anda memeriksa sumbernya.
+CMD menampilkan **URL setup sementara**. Salin URL tersebut ke browser di laptop yang sama. Isi username (default `admin`), password **12–72 byte**, dan konfirmasi password, lalu simpan. Input password tersembunyi di browser, tidak dimasukkan sebagai argumen CMD. Jangan bagikan URL setup, password, atau screenshot yang memuat token URL.
 
-### 3. Jalankan collector
+Server setup hanya mendengarkan `127.0.0.1`, memakai token acak sekali pakai, membatasi Host/Origin, maksimal aktif 10 menit, dan berhenti setelah berhasil. Ini terpisah dari Apache dan tidak membutuhkan pengaturan `httpd.conf`. Biarkan jendela CMD terbuka sampai muncul pesan berhasil; jika terjadi error, jendela berhenti pada `pause` agar pesannya dapat dibaca. `Ctrl+C` membatalkan setup.
 
-Di PowerShell:
+Akun sudah ada? Gunakan akun lama atau jalankan berikut **di CMD**, lalu isi form yang baru:
 
-```powershell
-cd C:\xampp\htdocs\HAY
-.\bin\start-collector.ps1
+```bat
+setup.cmd reset-password
 ```
 
-Biarkan terminal berjalan. Collector mengambil satu siklus setiap kurang lebih 15 detik; jika pengumpulan lebih lama, siklus tidak ditumpuk. `Ctrl+C` menghentikannya. Hanya satu collector diperbolehkan untuk direktori penyimpanan yang sama.
+Akun viewer opsional:
 
-Untuk pengujian satu siklus:
-
-```powershell
-& 'C:\xampp\php\php.exe' '.\bin\collector.php'
+```bat
+setup.cmd set-viewer
 ```
 
-Buka `http://localhost/HAY/public/` lalu login. Verifikasi nama komputer, uptime, CPU/RAM, drive, baterai (jika tersedia), dan waktu pembaruan. Pembacaan pertama dapat memerlukan waktu; jika CIM gagal, panel catatan menunjukkan kelompok data yang tidak tersedia.
+Folder privat dan file JSON dibuat otomatis. NTFS ACL otomatis hanya diterapkan pada folder privat yang **baru** dibuat, menggunakan utilitas Windows `whoami` dan `icacls`. Folder yang sudah ada tidak diubah ACL-nya. Jangan menjalankan setup sebagai Administrator kecuali ada kebutuhan izin yang terverifikasi.
 
-Pada browser tanpa dukungan `AbortSignal.timeout`, gunakan browser modern yang didukung (Chrome/Edge/Firefox versi terkini).
+### 3. Mulai collector melalui CMD
+
+Dari folder `bin`, klik dua kali **`start-collector.cmd`**, atau di CMD:
+
+```bat
+start-collector.cmd
+```
+
+Biarkan jendelanya terbuka. Pesan selesai akan muncul berkala. Tekan `Ctrl+C` untuk berhenti. Error ditampilkan sebelum jendela ditutup. Tidak perlu menjalankan file `.ps1` secara manual.
+
+**Catatan:** collector masih menggunakan Windows PowerShell/CIM **di belakang layar** untuk membaca metrik Windows. Launcher CMD menghilangkan kebutuhan membuka terminal PowerShell dan menjalankan skrip setup PowerShell, bukan menghapus ketergantungan CIM. Jika kebijakan Windows memblokir skrip metrik, dashboard menampilkan bahwa metrik tidak tersedia; jangan menonaktifkan kebijakan keamanan secara global.
+
+Untuk pengujian satu siklus, dari folder proyek:
+
+```bat
+"C:\xampp\php\php.exe" bin\collector.php
+```
+
+Buka `http://localhost/HAY/public/` lalu login. Jika Apache menggunakan port berbeda, sesuaikan URL. Tunggu 15–30 detik, lalu periksa nama komputer, uptime, CPU/RAM, drive, dan baterai jika tersedia. Status waktu pembaruan harus berubah selama collector berjalan. Jika gagal, salin pesan error CMD tanpa token atau password.
+
+Launcher `.ps1` lama tetap disediakan untuk pengguna yang memang memilih PowerShell. Gunakan browser modern (Chrome/Edge/Firefox terkini).
 
 ### 4. Otomatis mulai setelah Windows menyala
 
-Buat task di **Windows Task Scheduler**:
+Buat task di **Windows Task Scheduler** untuk langsung menjalankan PHP, tanpa PowerShell:
 
 - Trigger: saat login akun collector; jika perlu sebelum login, gunakan akun layanan dengan hak minimum dan sesuaikan hak CIM/folder.
-- Program: `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`
-- Arguments: `-NoProfile -NonInteractive -File "C:\xampp\htdocs\HAY\bin\start-collector.ps1"`
+- Program: `C:\xampp\php\php.exe`
+- Arguments: `"C:\xampp\htdocs\HAY\bin\collector.php" --loop`
 - Start in: `C:\xampp\htdocs\HAY`
 - Pilih **Do not start a new instance**, aktifkan restart setelah gagal, dan sesuaikan batas waktu task agar loop tidak dihentikan setelah beberapa hari.
-- Jangan centang “Run with highest privileges” tanpa alasan kebutuhan izin yang terverifikasi.
+- Jangan centang “Run with highest privileges” tanpa kebutuhan izin yang terverifikasi.
 
-Jika PHP berada di lokasi nonstandar, tambahkan `-Php "..."` pada argumen skrip. Lokasi data tetap mengikuti `src/settings.php`. Task harus menggunakan akun dengan izin yang sesuai. Jika collector berhenti, dashboard tetap dapat dibuka dan menandai snapshot sebagai data lama.
+Gunakan executable dan lokasi proyek yang sebenarnya. Lokasi data mengikuti `src/settings.php` / deteksi otomatis; override `HAY_STORAGE` tetap berlaku jika sengaja diatur. Jika collector berhenti, dashboard menandai snapshot sebagai data lama.
 
 ## Pengelolaan layanan
 
@@ -138,21 +155,7 @@ Klik **Tambah layanan**, isi nama, port, TCP atau HTTP, path lokal dan kode HTTP
 - Perubahan menunggu siklus collector berikutnya. **Periksa sekarang** mengantrekan satu siklus lebih awal pada collector aktif, dengan batas satu permintaan setiap 10 detik; bukan menjalankan shell melalui web.
 - Setelah edit, hasil konfigurasi lama tidak dianggap sebagai hasil konfigurasi baru.
 
-Form hanya untuk admin. Untuk viewer opsional:
-
-```powershell
-.\bin\setup.ps1 -Viewer -Username 'pengamat'
-```
-
-Viewer dapat melihat data, tetapi tidak mengubah konfigurasi, meminta pemeriksaan, atau membaca audit. Perubahan akun mengakhiri session lama. Hanya satu admin dan satu viewer opsional didukung.
-
-Reset password melalui terminal lokal:
-
-```powershell
-.\bin\setup.ps1 -ResetPassword -Username 'admin'
-```
-
-Gunakan nama admin yang Anda inginkan. Pembuatan/reset viewer mengganti satu akun viewer yang ada. Lupa password tidak memerlukan endpoint pemulihan publik.
+Form hanya untuk admin. Akun viewer dibuat melalui `bin/setup.cmd set-viewer`. Viewer dapat melihat data, tetapi tidak mengubah konfigurasi, meminta pemeriksaan, atau membaca audit. Hanya satu admin dan satu viewer opsional didukung. Perubahan akun mengakhiri session lama. Reset admin menggunakan `bin/setup.cmd reset-password`; reset/pembuatan viewer mengganti satu akun viewer yang ada.
 
 ## Apache dan MySQL
 
@@ -206,3 +209,5 @@ Tes memakai penyimpanan sementara dan server PHP di loopback, tidak menyentuh ko
 Pengujian Linux tidak membuktikan CIM, PowerShell 5.1, NTFS, Task Scheduler, atau aturan Apache XAMPP berfungsi. Verifikasi checklist pemasangan di Acer diperlukan sebelum penggunaan rutin.
 
 Tes browser opsional: `node tests/browser-smoke.cjs`, memerlukan Playwright dan Chromium pada mesin pengembangan. Gunakan `PHP_BIN` dan `CHROMIUM_BIN` jika executable tidak berada pada lokasi default. Fixture metrik dalam tes browser bersifat sintetis dan bukan hasil pembacaan laptop.
+
+Tes browser wizard setup: `node tests/setup-browser.cjs` (Playwright/Chromium). Alur setup menggunakan server PHP loopback sementara; pengujian Linux tidak menggantikan uji launcher `.cmd` dan ACL di Windows.
