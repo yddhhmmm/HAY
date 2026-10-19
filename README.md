@@ -49,27 +49,29 @@ C:\xampp\hay-private\
     *.lock              kunci baca/tulis dan collector
 ```
 
-Default web memilih `hay-private` di sebelah document root Apache. Untuk XAMPP standar `C:/xampp/htdocs`, hasilnya `C:/xampp/hay-private`. **Atur lokasi secara eksplisit** agar web dan CLI menggunakan direktori sama.
+**Tidak perlu mengedit `httpd.conf` untuk lokasi penyimpanan pada XAMPP standar.** Kode mencari folder `htdocs` di atas lokasi proyek, lalu memilih `hay-private` di sebelahnya. Web, setup akun, dan collector membaca aturan yang sama.
 
-Tambahkan pada konfigurasi Apache yang sesuai, misalnya `httpd.conf`:
+Contoh:
 
-```apache
-SetEnv HAY_STORAGE "C:/xampp/hay-private"
+| Folder proyek | Data privat otomatis |
+|---|---|
+| `C:/xampp/htdocs/HAY` | `C:/xampp/hay-private` |
+| `D:/xampp/htdocs/HAY` | `D:/xampp/hay-private` |
+| `C:/xampp/htdocs/tools/HAY` | `C:/xampp/hay-private` |
 
-<Directory "C:/xampp/htdocs/HAY">
-    AllowOverride AuthConfig Options
-    Require all denied
-</Directory>
-<Directory "C:/xampp/htdocs/HAY/public">
-    Require local
-</Directory>
+Folder dan file JSON dibuat otomatis ketika setup/collector dijalankan; Anda tidak perlu membuat atau mengisi JSON satu per satu. Folder `hay-private` sengaja di luar `htdocs` supaya file login dan hasil monitoring tidak memiliki URL publik.
+
+**Jika ingin lokasi lain, cukup edit `src/settings.php`:**
+
+```php
+return ['storage' => 'D:/data/hay-private'];
 ```
 
-`public/.htaccess` yang disertakan sudah membatasi akses dengan `Require local`. Alternatif yang lebih bersih adalah VirtualHost dengan DocumentRoot langsung ke folder `public`, `Require local`, dan `AllowOverride None`; header keamanan tetap dikirim PHP. Sesuaikan nama/port VirtualHost dengan Apache Anda tanpa mengubah konfigurasi aplikasi lain.
+Gunakan path absolut di luar document root; biarkan `null` untuk deteksi otomatis. Setelah mengubahnya, hentikan collector, pindahkan data privat lama jika ingin mempertahankannya, lalu mulai ulang collector. Semua komponen akan membaca pengaturan ini. Variabel `HAY_STORAGE` hanya override opsional untuk instalasi lanjutan; jangan menyetnya ke lokasi berbeda pada Apache dan CLI. Jika pernah menambahkan SetEnv HAY_STORAGE dari panduan versi awal, hapus override lama atau samakan dengan lokasi yang diinginkan; tidak perlu menambahkannya pada instalasi baru.
 
-**Jangan** menjalankan server dengan seluruh proyek sebagai document root jika aturan penolakan akses tidak aktif. File sumber, bin, dan tests tidak boleh tersedia lewat HTTP. `.htaccess` tidak berlaku pada server selain Apache.
+`.htaccess` sudah disertakan: folder proyek ditutup dari HTTP kecuali `public`, dan akses public dibatasi ke komputer lokal. XAMPP standar biasanya sudah mengizinkan `.htaccess`. Jika aturan ini dinonaktifkan oleh konfigurasi server yang Anda ubah sendiri, kode PHP tidak dapat mengaktifkannya; konfigurasi Apache perlu diperbaiki atau gunakan document root langsung ke `public`. Jangan menonaktifkan proteksi folder sumber untuk mengatasi error 403.
 
-Folder privat ditolak aplikasi jika terletak di dalam document root. Skrip setup memberi ACL terbatas pada folder privat yang baru dibuat (akun setup, SYSTEM, dan Administrators); ACL folder yang sudah ada tidak ditimpa. Jika Apache/collector memakai akun berbeda, beri izin hanya pada akun tersebut. Periksa NTFS ACL agar hanya akun Windows yang menjalankan Apache/collector dan administrator yang berwenang dapat membaca/menulisnya; `chmod` PHP tidak menggantikan NTFS ACL. Apache/collector tidak perlu dijalankan sebagai Administrator. Izin minimum pada CIM perlu diverifikasi untuk akun collector yang dipakai.
+Folder privat ditolak aplikasi jika terletak di dalam document root. Skrip setup memberi ACL terbatas pada folder privat yang baru dibuat (akun setup, SYSTEM, dan Administrators); ACL folder yang sudah ada tidak ditimpa. Jika Apache/collector memakai akun berbeda, beri izin hanya pada akun tersebut. Periksa NTFS ACL agar hanya akun yang berwenang dapat membaca/menulisnya. Apache/collector tidak perlu dijalankan sebagai Administrator. Izin CIM perlu diverifikasi untuk akun collector yang dipakai.
 
 ### 2. Buat akun admin
 
@@ -83,10 +85,10 @@ cd C:\xampp\htdocs\HAY
 Masukkan password **12–72 byte** (gunakan passphrase panjang). Input disembunyikan dan dikirim melalui stdin, bukan argumen proses. Tidak ada password default. Jika lokasi XAMPP berbeda:
 
 ```powershell
-.\bin\setup.ps1 -Php 'D:\xampp\php\php.exe' -Storage 'D:\xampp\hay-private' -Username 'pemilik'
+.\bin\setup.ps1 -Php 'D:\xampp\php\php.exe' -Username 'pemilik'
 ```
 
-Samakan `Storage` dengan `HAY_STORAGE` Apache. Restart Apache setelah mengubah konfigurasinya.
+Lokasi data mengikuti deteksi otomatis atau `src/settings.php`; tidak perlu mengubah konfigurasi Apache atau restart Apache untuk pengaturan default ini.
 
 Jika kebijakan Windows menolak skrip, periksa/tandatangani skrip sesuai kebijakan komputer/organisasi. Jangan mematikan kebijakan verifikasi secara global. File hasil unduhan mungkin memerlukan peninjauan dan penghapusan tanda blokir melalui Properties setelah Anda memeriksa sumbernya.
 
@@ -104,7 +106,6 @@ Biarkan terminal berjalan. Collector mengambil satu siklus setiap kurang lebih 1
 Untuk pengujian satu siklus:
 
 ```powershell
-$env:HAY_STORAGE = 'C:\xampp\hay-private'
 & 'C:\xampp\php\php.exe' '.\bin\collector.php'
 ```
 
@@ -123,7 +124,7 @@ Buat task di **Windows Task Scheduler**:
 - Pilih **Do not start a new instance**, aktifkan restart setelah gagal, dan sesuaikan batas waktu task agar loop tidak dihentikan setelah beberapa hari.
 - Jangan centang “Run with highest privileges” tanpa alasan kebutuhan izin yang terverifikasi.
 
-Jika menggunakan lokasi nonstandar, tambahkan `-Php "..." -Storage "..."` pada argumen skrip. Task harus menggunakan lokasi dan akun dengan izin yang sama. Jika collector berhenti, dashboard tetap dapat dibuka dan menandai snapshot sebagai data lama.
+Jika PHP berada di lokasi nonstandar, tambahkan `-Php "..."` pada argumen skrip. Lokasi data tetap mengikuti `src/settings.php`. Task harus menggunakan akun dengan izin yang sesuai. Jika collector berhenti, dashboard tetap dapat dibuka dan menandai snapshot sebagai data lama.
 
 ## Pengelolaan layanan
 
@@ -155,7 +156,9 @@ Gunakan nama admin yang Anda inginkan. Pembuatan/reset viewer mengganti satu aku
 
 ## Apache dan MySQL
 
-### Apache
+### Apache (opsional untuk statistik lengkap)
+
+Pengaturan ini hanya diperlukan jika ingin statistik Apache lengkap; login, CPU/RAM, penyimpanan JSON dan pengelolaan layanan tetap dapat digunakan tanpa mengaktifkannya.
 
 Aktifkan `mod_status` dan `ExtendedStatus On` pada masing-masing instance Apache yang dipantau, lalu batasi endpointnya:
 

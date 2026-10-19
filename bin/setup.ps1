@@ -1,12 +1,18 @@
 param(
     [string]$Php = 'C:\xampp\php\php.exe',
-    [string]$Storage = 'C:\xampp\hay-private',
+    [string]$Storage = '',
     [string]$Username = 'admin',
     [switch]$ResetPassword,
     [switch]$Viewer
 )
 $ErrorActionPreference = 'Stop'
-$env:HAY_STORAGE = $Storage
+if ($Storage) {
+    $env:HAY_STORAGE = $Storage
+} else {
+    $Storage = & $Php (Join-Path $PSScriptRoot 'admin.php') storage-path
+    if ($LASTEXITCODE -ne 0 -or -not $Storage) { throw 'Lokasi penyimpanan tidak dapat ditentukan.' }
+    $Storage = ([string]$Storage).Trim()
+}
 if (-not (Test-Path -LiteralPath $Storage)) {
     New-Item -ItemType Directory -Path $Storage | Out-Null
     # Batasi ACL hanya pada direktori baru; jangan menimpa izin folder pengguna yang sudah ada.

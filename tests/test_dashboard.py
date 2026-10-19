@@ -188,4 +188,29 @@ class DashboardTest(unittest.TestCase):
         self.assertNotEqual(result.returncode,0)
         self.assertIn('di luar document root',result.stdout+result.stderr)
 
+    def test_09_xampp_storage_without_apache_configuration(self):
+        # Reproduksi struktur XAMPP tanpa mengubah konfigurasi Apache atau environment.
+        base=Path(self.temp.name)/'portable-xampp'
+        project=base/'htdocs'/'tools'/'HAY'
+        (project/'src').mkdir(parents=True)
+        (project/'src'/'bootstrap.php').write_text((ROOT/'src'/'bootstrap.php').read_text())
+        settings=project/'src'/'settings.php'
+        settings.write_text("<?php return ['storage'=>null];")
+        env=dict(self.env);env.pop('HAY_STORAGE',None)
+        script="require "+json.dumps(str(project/'src'/'bootstrap.php'))+";"
+        def run(extra):
+            r=subprocess.run([PHP,'-n','-r',script+extra],env=env,text=True,capture_output=True,check=True)
+            return r.stdout.strip()
+        expected=str(base/'hay-private')
+        self.assertEqual(run('echo storageLocation();'),expected)
+        self.assertFalse((base/'hay-private').exists(),'Path discovery must not create storage before ACL setup')
+        document_root=json.dumps(str(base/'htdocs'))
+        self.assertEqual(run("$_SERVER['DOCUMENT_ROOT']="+document_root+";echo storage();"),expected)
+        self.assertEqual(run('echo storage();'),expected)
+        custom=str(base/'custom-private')
+        settings.write_text("<?php return ['storage'=>"+json.dumps(custom)+"];")
+        self.assertEqual(run('echo storageLocation();'),custom)
+        self.assertEqual(run("$_SERVER['DOCUMENT_ROOT']="+document_root+";echo storage();"),custom)
+        self.assertEqual(run("echo defaultStorageLocation('D:/xampp/HTDOCS/tools/HAY');"),'D:/xampp/hay-private')
+
 if __name__=='__main__':unittest.main(verbosity=2)

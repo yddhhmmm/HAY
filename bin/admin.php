@@ -4,6 +4,7 @@ if(PHP_SAPI!=='cli') {http_response_code(404);exit;}
 require __DIR__.'/../src/bootstrap.php';
 try {
     $command=$argv[1]??'';
+    if($command==='storage-path') {fwrite(STDOUT,storageLocation().PHP_EOL);exit;}
     if(!in_array($command,['init','reset-password','set-viewer'],true)) throw new RuntimeException('Gunakan init, reset-password, atau set-viewer. Password dibaca dari stdin.');
     if($command==='init'&&loadJson('auth')) throw new RuntimeException('Admin sudah ada. Gunakan reset-password untuk mengganti password.');
     $username=$argv[2]??'admin';

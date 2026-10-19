@@ -1,15 +1,31 @@
 <?php
 declare(strict_types=1);
 const HAY_ROOT = __DIR__ . '/..';
+// Satu sumber lokasi untuk web, CLI, dan skrip setup; tidak bergantung pada DOCUMENT_ROOT.
+function defaultStorageLocation(string $projectRoot): string {
+    $projectRoot=rtrim(str_replace('\\','/',$projectRoot),'/');
+    for($dir=$projectRoot; $dir!=='' && $dir!=='.'; $dir=dirname($dir)) {
+        if(strtolower(basename($dir))==='htdocs') return dirname($dir).'/hay-private';
+        if(dirname($dir)===$dir) break;
+    }
+    return dirname($projectRoot).'/hay-private';
+}
+function storageLocation(): string {
+    $settings=require __DIR__.'/settings.php';
+    $candidate=getenv('HAY_STORAGE') ?: ($settings['storage'] ?? null) ?: defaultStorageLocation(realpath(HAY_ROOT));
+    if(!is_string($candidate)) throw new RuntimeException('Lokasi penyimpanan harus berupa path absolut.');
+    $candidate=str_replace('\\','/',$candidate);
+    if(!preg_match('~^(?:[A-Za-z]:/|/)~',$candidate)) throw new RuntimeException('Lokasi penyimpanan harus berupa path absolut.');
+    return rtrim($candidate,'/');
+}
 function storage(): string {
     static $path;
     if ($path !== null) return $path;
-    $doc = $_SERVER['DOCUMENT_ROOT'] ?? '';
-    $default = $doc !== '' ? dirname($doc) . '/hay-private' : dirname(realpath(HAY_ROOT)) . '/hay-private';
-    $candidate = getenv('HAY_STORAGE') ?: $default;
+    $candidate=storageLocation();
     if (!is_dir($candidate) && !mkdir($candidate, 0700, true) && !is_dir($candidate)) throw new RuntimeException('Penyimpanan tidak dapat dibuat.');
     $resolved = realpath($candidate);
     if (!$resolved) throw new RuntimeException('Lokasi penyimpanan tidak valid.');
+    $doc = $_SERVER['DOCUMENT_ROOT'] ?? '';
     if ($doc && ($root = realpath($doc))) {
         $a = strtolower(str_replace('\\', '/', $resolved)); $b = strtolower(rtrim(str_replace('\\', '/', $root), '/'));
         if ($a === $b || str_starts_with($a, $b . '/')) throw new RuntimeException('HAY_STORAGE wajib di luar document root.');
