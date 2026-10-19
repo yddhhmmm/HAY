@@ -8,7 +8,7 @@ try {
     $input = [];
     if ($method !== 'GET') {
         if ($method !== 'POST') reply(['error'=>'Metode tidak diizinkan.'],405);
-        if (!str_starts_with($_SERVER['CONTENT_TYPE'] ?? '', 'application/json')) reply(['error'=>'Gunakan JSON.'],415);
+        if (!hayStartsWith($_SERVER['CONTENT_TYPE'] ?? '', 'application/json')) reply(['error'=>'Gunakan JSON.'],415);
         $body = file_get_contents('php://input', false, null, 0, 8193);
         if (strlen($body) > 8192) reply(['error'=>'Permintaan terlalu besar.'],413);
         $input = json_decode($body, true, 32, JSON_THROW_ON_ERROR);
@@ -83,7 +83,7 @@ try {
         $id=$input['id'] ?? '';
         if(!is_string($id)||!preg_match('/^[a-f0-9]{16}$/D',$id)) throw new InvalidArgumentException('ID tidak valid.');
         mutateJson('services',function($rows)use($id){
-            $next=array_values(array_filter($rows,fn($r)=>$r['id']!==$id));
+            $next=array_values(array_filter($rows,function($r)use($id) { return $r['id']!==$id; }));
             if(count($next)===count($rows)) throw new InvalidArgumentException('Layanan tidak ditemukan.');
             return $next;
         },[],true);

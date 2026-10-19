@@ -6,14 +6,14 @@ function windowsMetrics(): array {
     if (!is_callable('proc_open')) return ['status'=>'unavailable','errors'=>['proc_open tidak tersedia.']];
     $out=tempnam(storage(),'.cim-'); $err=tempnam(storage(),'.err-');
     $exe=(getenv('SystemRoot') ?: 'C:\\Windows').'\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
-    $process=proc_open([$exe,'-NoLogo','-NoProfile','-NonInteractive','-File',realpath(__DIR__.'/../bin/windows-metrics.ps1')],[0=>['pipe','r'],1=>['file',$out,'w'],2=>['file',$err,'w']],$pipes,null,null,['bypass_shell'=>true]);
+    $process=hayProcOpen([$exe,'-NoLogo','-NoProfile','-NonInteractive','-File',realpath(__DIR__.'/../bin/windows-metrics.ps1')],[0=>['pipe','r'],1=>['file',$out,'w'],2=>['file',$err,'w']],$pipes,null,null,['bypass_shell'=>true]);
     if (!is_resource($process)) { unlink($out); unlink($err); return ['status'=>'unavailable','errors'=>['PowerShell tidak dapat dijalankan.']]; }
     fclose($pipes[0]); $start=microtime(true); $timed=false;
     do { $state=proc_get_status($process); if(!$state['running']) break; if(microtime(true)-$start>10) {proc_terminate($process);$timed=true;break;} usleep(50000); } while(true);
     proc_close($process);
     $raw=file_get_contents($out); unlink($out); unlink($err);
     try { if($timed) throw new RuntimeException(); $result=json_decode(preg_replace('/^\xEF\xBB\xBF/','',$raw),true,64,JSON_THROW_ON_ERROR); if(!is_array($result)||!isset($result['status'])) throw new RuntimeException(); return $result; }
-    catch(Throwable) { return ['status'=>'unavailable','errors'=>[$timed?'Pengambilan CIM timeout.':'Output PowerShell tidak valid. Periksa kebijakan eksekusi dan CIM.']]; }
+    catch(Throwable $ignored) { return ['status'=>'unavailable','errors'=>[$timed?'Pengambilan CIM timeout.':'Output PowerShell tidak valid. Periksa kebijakan eksekusi dan CIM.']]; }
 }
 function tcpProbe(int $port): array {
     foreach(['127.0.0.1','[::1]'] as $host) {
@@ -44,7 +44,7 @@ function localHttp(int $port, string $path): array {
 function apacheMetrics(int $port): array {
     $r=localHttp($port,'/server-status?auto');
     if($r['status']!=='healthy'||$r['code']!==200) return ['status'=>$r['status']==='unreachable'?'unreachable':'unavailable','detail'=>'Endpoint mod_status tidak tersedia'];
-    $map=[]; foreach(explode("\n",$r['body']) as $line) if(str_contains($line,':')) {[$k,$v]=explode(':',$line,2);$map[trim($k)]=trim($v);}
+    $map=[]; foreach(explode("\n",$r['body']) as $line) if(hayContains($line,':')) {[$k,$v]=explode(':',$line,2);$map[trim($k)]=trim($v);}
     if(!isset($map['Total Accesses'],$map['Uptime'])) return ['status'=>'unavailable','detail'=>'Format mod_status tidak lengkap; periksa ExtendedStatus'];
     $fields=['accesses'=>'Total Accesses','cpu'=>'CPULoad','uptime'=>'Uptime','requestsPerSecond'=>'ReqPerSec','busy'=>'BusyWorkers','idle'=>'IdleWorkers','trafficKiB'=>'Total kBytes','bytesPerSecond'=>'BytesPerSec'];
     $metrics=[];foreach($fields as $k=>$field) $metrics[$k]=isset($map[$field])&&is_numeric($map[$field])?(float)$map[$field]:null;
@@ -63,7 +63,7 @@ function mysqlMetrics(): array {
         if(!$result) return ['status'=>'unavailable','detail'=>'Query statistik MySQL gagal'];
         $metrics=[];while($row=$result->fetch_assoc())$metrics[$row['Variable_name']]=(float)$row['Value'];
         return ['status'=>'healthy','detail'=>'Statistik MySQL tersedia','metrics'=>$metrics];
-    } catch(Throwable) {return ['status'=>'unavailable','detail'=>'Pemeriksaan MySQL gagal'];} finally {try {if($db instanceof mysqli) $db->close();} catch(Throwable) { /* Koneksi yang belum terinisialisasi tidak boleh menghentikan collector. */ }}
+    } catch(Throwable $ignored) {return ['status'=>'unavailable','detail'=>'Pemeriksaan MySQL gagal'];} finally {try {if($db instanceof mysqli) $db->close();} catch(Throwable $ignored) { /* Koneksi yang belum terinisialisasi tidak boleh menghentikan collector. */ }}
 }
 function collectSnapshot(): array {
     $started=microtime(true); $system=windowsMetrics(); $services=loadJson('services'); $results=[];
@@ -82,8 +82,8 @@ function collectSnapshot(): array {
     if(($system['ram']['percent']??0)>=90) $conditions['ram']='RAM minimal 90% selama tiga pemeriksaan.';
     foreach($system['disks']??[] as $disk) if($disk['size']>0&&($disk['size']-$disk['free'])/$disk['size']>=0.9) $conditions['disk:'.$disk['drive']]='Disk '.$disk['drive'].' minimal 90% penuh selama tiga pemeriksaan.';
     $counters=mutateJson('alert-state',function($previous)use($conditions){$next=[];foreach($conditions as $key=>$message)$next[$key]=['count'=>min(3,($previous[$key]['count']??0)+1),'message'=>$message];return $next;});
-    $snapshot['alerts']=array_values(array_map(fn($r)=>$r['message'],array_filter($counters,fn($r)=>$r['count']>=3)));
+    $snapshot['alerts']=array_values(array_map(function($r) { return $r['message']; },array_filter($counters,function($r) { return $r['count']>=3; })));
     $history=mutateJson('history',function($rows)use($snapshot){$rows[]=['timestamp'=>$snapshot['timestamp'],'cpu'=>$snapshot['system']['cpu']??null,'ram'=>$snapshot['system']['ram']['percent']??null];return array_slice($rows,-720);});
     $snapshot['history']=$history; $snapshot['durationMs']=round((microtime(true)-$started)*1000);
-    mutateJson('snapshot',fn()=>$snapshot); return $snapshot;
+    mutateJson('snapshot',function()use($snapshot) { return $snapshot; }); return $snapshot;
 }

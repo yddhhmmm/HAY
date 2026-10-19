@@ -14,7 +14,7 @@ if(strlen($token)!==64 || !is_string($_GET['token']??null) || !hash_equals($toke
 if(time()>(int)getenv('HAY_SETUP_EXPIRES') || !$done || file_exists($done)) {http_response_code(410);exit('Sesi setup sudah berakhir.');}
 $error='';$success=false;$username=$mode==='set-viewer'?'viewer':'admin';
 if($_SERVER['REQUEST_METHOD']==='POST') {
-    if(($_SERVER['HTTP_ORIGIN']??'')!==$origin || !str_starts_with($_SERVER['CONTENT_TYPE']??'','application/x-www-form-urlencoded')) {http_response_code(403);exit('Asal permintaan tidak valid.');}
+    if(($_SERVER['HTTP_ORIGIN']??'')!==$origin || !hayStartsWith($_SERVER['CONTENT_TYPE']??'','application/x-www-form-urlencoded')) {http_response_code(403);exit('Asal permintaan tidak valid.');}
     if((int)($_SERVER['CONTENT_LENGTH']??0)>4096){http_response_code(413);exit('Permintaan terlalu besar.');}
     try {
         if(!is_string($_POST['username']??null)||!is_string($_POST['password']??null)||!is_string($_POST['confirm']??null)) throw new InvalidArgumentException('Form tidak lengkap.');

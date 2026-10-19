@@ -2,9 +2,9 @@
 declare(strict_types=1);
 if(PHP_SAPI!=='cli'){http_response_code(404);exit;}
 require __DIR__.'/../src/bootstrap.php';
-// Jalankan perintah Windows yang tetap, dengan argument array, tanpa input dari browser.
+// Jalankan perintah Windows yang tetap melalui helper kompatibilitas, tanpa input dari browser.
 function windowsCommand(array $command): string {
-    $p=proc_open($command,[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,null,null,['bypass_shell'=>true]);
+    $p=hayProcOpen($command,[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,null,null,['bypass_shell'=>true]);
     if(!is_resource($p)) throw new RuntimeException('Utilitas Windows gagal dijalankan.');
     fclose($pipes[0]);$out=stream_get_contents($pipes[1]);$err=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);
     if(proc_close($p)!==0) throw new RuntimeException('Pengaturan izin folder gagal: '.trim($err));
@@ -32,7 +32,7 @@ try {
     $token=bin2hex(random_bytes(32));$done=$path.'/.setup-'.bin2hex(random_bytes(16));$expires=time()+600;
     putenv('HAY_SETUP_TOKEN='.$token);putenv('HAY_SETUP_MODE='.$mode);putenv('HAY_SETUP_HOST='.$host);putenv('HAY_SETUP_EXPIRES='.$expires);putenv('HAY_SETUP_DONE='.$done);
     $log=tempnam($path,'.setup-log-');
-    $process=proc_open([PHP_BINARY,'-S',$host,'-t',realpath(HAY_ROOT.'/public'),__DIR__.'/setup-router.php'],[0=>['pipe','r'],1=>['file',$log,'a'],2=>['file',$log,'a']],$pipes,null,null,['bypass_shell'=>true]);
+    $process=hayProcOpen([PHP_BINARY,'-S',$host,'-t',realpath(HAY_ROOT.'/public'),__DIR__.'/setup-router.php'],[0=>['pipe','r'],1=>['file',$log,'a'],2=>['file',$log,'a']],$pipes,null,null,['bypass_shell'=>true]);
     if(!is_resource($process)) throw new RuntimeException('Server setup tidak dapat dimulai.');
     fclose($pipes[0]);
     $ready=false;

@@ -1,5 +1,6 @@
-"""Integration tests, standard library only. PHP_BIN must point to PHP 8.1+."""
+"""Integration tests, standard library only. PHP_BIN must point to PHP 7.3+."""
 import concurrent.futures
+import base64
 import http.cookiejar
 import json
 import os
@@ -34,7 +35,7 @@ class DashboardTest(unittest.TestCase):
         cls.run_php('bin/admin.php', 'init', 'admin', input=cls.password)
         cls.port = free_port()
         cls.log = open(Path(cls.temp.name)/'server.log','w')
-        cls.server = subprocess.Popen([PHP,'-n','-d','session.save_path='+cls.temp.name,'-S',f'127.0.0.1:{cls.port}','-t',str(ROOT/'public')],env=cls.env,stdout=cls.log,stderr=cls.log)
+        cls.server = subprocess.Popen([PHP,'-d','session.save_path='+cls.temp.name,'-S',f'127.0.0.1:{cls.port}','-t',str(ROOT/'public')],env=cls.env,stdout=cls.log,stderr=cls.log)
         cls.base=f'http://127.0.0.1:{cls.port}/'
         for _ in range(100):
             try:
@@ -47,7 +48,7 @@ class DashboardTest(unittest.TestCase):
 
     @classmethod
     def run_php(cls,*args,input=None):
-        return subprocess.run([PHP,'-n',*args],cwd=ROOT,env=cls.env,text=True,input=input,capture_output=True,check=True)
+        return subprocess.run([PHP,*args],cwd=ROOT,env=cls.env,text=True,input=input,capture_output=True,check=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -85,8 +86,13 @@ class DashboardTest(unittest.TestCase):
         with self.client().open(self.base) as response:
             self.assertIn('HttpOnly',response.headers.get('Set-Cookie',''))
             self.assertIn('SameSite=Strict',response.headers.get('Set-Cookie',''))
-        with c.open(self.base+'../src/bootstrap.php') as response:
-            self.assertIn('<!doctype html>',response.read().decode())
+        try: response=c.open(self.base+'../src/bootstrap.php')
+        except urllib.error.HTTPError as error: response=error
+        with response:
+            body=response.read().decode()
+            self.assertNotIn('const HAY_ROOT',body)
+            self.assertIn(response.status,[200,403,404])
+            if response.status==200:self.assertIn('<!doctype html>',body)
         c,token=self.login()
         self.assertEqual(self.request(c,'save',{},'wrong-token')[0],403)
         self.assertEqual(self.request(c,'logout',{},token)[0],200)
@@ -150,7 +156,7 @@ class DashboardTest(unittest.TestCase):
         finally:server.shutdown();server.server_close()
 
     def test_05_atomic_concurrent_writes_and_corruption(self):
-        code="require 'src/bootstrap.php'; for($i=0;$i<15;$i++)mutateJson('counter',fn($v)=>$v+1,0);"
+        code="require 'src/bootstrap.php'; for($i=0;$i<15;$i++)mutateJson('counter',function($v){return $v+1;},0);"
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
             list(pool.map(lambda _:self.run_php('-r',code),range(5)))
         self.assertEqual(json.loads((Path(self.temp.name)/'counter.json').read_text()),75)
@@ -187,7 +193,7 @@ class DashboardTest(unittest.TestCase):
         self.run_php('-r',code)
         self.assertEqual(self.request(c,'snapshot')[0],401)
         check="require 'src/bootstrap.php';$_SERVER['DOCUMENT_ROOT']=dirname(getenv('HAY_STORAGE'));storage();"
-        result=subprocess.run([PHP,'-n','-r',check],cwd=ROOT,env=self.env,text=True,capture_output=True)
+        result=subprocess.run([PHP,'-r',check],cwd=ROOT,env=self.env,text=True,capture_output=True)
         self.assertNotEqual(result.returncode,0)
         self.assertIn('di luar document root',result.stdout+result.stderr)
 
@@ -197,12 +203,13 @@ class DashboardTest(unittest.TestCase):
         project=base/'htdocs'/'tools'/'HAY'
         (project/'src').mkdir(parents=True)
         (project/'src'/'bootstrap.php').write_text((ROOT/'src'/'bootstrap.php').read_text())
+        (project/'src'/'compat.php').write_text((ROOT/'src'/'compat.php').read_text())
         settings=project/'src'/'settings.php'
         settings.write_text("<?php return ['storage'=>null];")
         env=dict(self.env);env.pop('HAY_STORAGE',None)
         script="require "+json.dumps(str(project/'src'/'bootstrap.php'))+";"
         def run(extra):
-            r=subprocess.run([PHP,'-n','-r',script+extra],env=env,text=True,capture_output=True,check=True)
+            r=subprocess.run([PHP,'-r',script+extra],env=env,text=True,capture_output=True,check=True)
             return r.stdout.strip()
         expected=str(base/'hay-private')
         self.assertEqual(run('echo storageLocation();'),expected)
@@ -220,7 +227,7 @@ class DashboardTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='hay-wizard-') as temp:
             private=str(Path(temp)/'private')
             env=dict(os.environ,HAY_STORAGE=private)
-            p=subprocess.Popen([PHP,'-n',str(ROOT/'bin/setup-console.php')],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+            p=subprocess.Popen([PHP,str(ROOT/'bin/setup-console.php')],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
             lines=queue.Queue()
             def reader():
                 for line in p.stdout:lines.put(line)
@@ -255,5 +262,21 @@ class DashboardTest(unittest.TestCase):
             finally:
                 if p.poll() is None:p.terminate();p.wait(timeout=5)
                 p.stdout.close()
+
+    def test_11_legacy_process_arguments_and_compatibility_helpers(self):
+        args=['a b', "a'quote", 'a"quote', 'x&y', '%PATH%', '!', 'trailing'+chr(92), '']
+        encoded=base64.b64encode(json.dumps(args).encode()).decode()
+        code="require 'src/bootstrap.php';$args=json_decode(base64_decode('"+encoded+"'),true);"
+        code+="$cmd=array_merge([PHP_BINARY,'-r','echo json_encode(array_slice($argv,1));','--'],$args);"
+        code+="$p=hayProcOpen($cmd,[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);fclose($pipes[0]);$out=stream_get_contents($pipes[1]);$err=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$exit=proc_close($p);if($exit!==0){fwrite(STDERR,$err);exit(1);}echo $out;"
+        self.assertEqual(json.loads(self.run_php('-r',code).stdout),args)
+        code="require 'src/bootstrap.php';echo json_encode([hayStartsWith('abc',''),hayStartsWith('abc','ab'),hayStartsWith('abc','bc'),hayContains('abc',''),hayContains('abc','bc'),hayContains('abc','z'),hayArrayIsList([]),hayArrayIsList(['a','b']),hayArrayIsList([1=>'a'])]);"
+        self.assertEqual(json.loads(self.run_php('-r',code).stdout),[True,True,False,True,True,False,True,True,False])
+        code="require 'src/bootstrap.php';echo hayWindowsArgument('');"
+        self.assertEqual(self.run_php('-r',code).stdout,'""')
+        code="require 'src/bootstrap.php';echo hayWindowsArgument('C:/xampp/php/php.exe');"
+        self.assertEqual(self.run_php('-r',code).stdout,'"C:/xampp/php/php.exe"')
+        code="require 'src/accounts.php';try{saveAccount('reset-password','admin',str_repeat('a',12).chr(0));exit(1);}catch(InvalidArgumentException $e){echo 'rejected';}"
+        self.assertEqual(self.run_php('-r',code).stdout,'rejected')
 
 if __name__=='__main__':unittest.main(verbosity=2)

@@ -9,13 +9,13 @@ const net=require('node:net');
 (async()=>{
  const root=resolve(__dirname,'..'),privateDir=mkdtempSync(join(tmpdir(),'hay-browser-'));
  const env={...process.env,HAY_STORAGE:privateDir},php=process.env.PHP_BIN||'php';
- const setup=spawnSync(php,['-n','bin/admin.php','init','admin'],{cwd:root,env,input:'Browser-test-password-42',encoding:'utf8'});
+ const setup=spawnSync(php,['bin/admin.php','init','admin'],{cwd:root,env,input:'Browser-test-password-42',encoding:'utf8'});
  assert.equal(setup.status,0,setup.stderr);
  // UI fixture only: these are synthetic metrics, not a claim about Windows collection.
  const now=Math.floor(Date.now()/1000);
  writeFileSync(join(privateDir,'snapshot.json'),JSON.stringify({timestamp:now,durationMs:120,system:{status:'healthy',computerName:'TEST-ACER',os:{caption:'Windows test fixture',version:'test'},cpu:27,ram:{used:6e9,total:12e9,percent:50},battery:{percent:72,status:2},disks:[{drive:'C:',size:100e9,free:25e9}],uptimeSeconds:3600,processCount:140,errors:[]},services:{},apache80:{status:'unavailable',detail:'Fixture'},apache8074:{status:'unreachable',detail:'Fixture'},mysql:{status:'unavailable',detail:'Fixture'},history:[{timestamp:now-30,cpu:20,ram:45},{timestamp:now-15,cpu:24,ram:48},{timestamp:now,cpu:27,ram:50}],alerts:[]}));
  const reservation=net.createServer();await new Promise(r=>reservation.listen(0,'127.0.0.1',r));const port=reservation.address().port;await new Promise(r=>reservation.close(r));
- const server=spawn(php,['-n','-d','session.save_path='+privateDir,'-S','127.0.0.1:'+port,'-t',join(root,'public')],{cwd:root,env,stdio:'ignore'});
+ const server=spawn(php,['-d','session.save_path='+privateDir,'-S','127.0.0.1:'+port,'-t',join(root,'public')],{cwd:root,env,stdio:'ignore'});
  let browser;
  try{
   for(let i=0;i<50;i++){try{await fetch('http://127.0.0.1:'+port);break;}catch{await new Promise(r=>setTimeout(r,100));}}

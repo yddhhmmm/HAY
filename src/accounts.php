@@ -4,6 +4,7 @@ require_once __DIR__.'/bootstrap.php';
 function saveAccount(string $command, string $username, string $password): void {
     if(!in_array($command,['init','reset-password','set-viewer'],true)) throw new InvalidArgumentException('Mode akun tidak valid.');
     if(!preg_match('/^[a-zA-Z0-9_.-]{3,40}$/D',$username)) throw new InvalidArgumentException('Username harus 3–40 karakter: huruf, angka, _ . -');
+    if(strpos($password,"\0")!==false) throw new InvalidArgumentException('Password tidak boleh mengandung NUL.');
     if(strlen($password)<12||strlen($password)>72) throw new InvalidArgumentException('Password harus 12–72 byte.');
     mutateJson('auth',function($auth)use($command,$username,$password){
         if($command==='init'&&$auth) throw new InvalidArgumentException('Admin sudah ada. Pilih reset-password jika ingin menggantinya.');
@@ -18,7 +19,7 @@ function saveAccount(string $command, string $username, string $password): void 
         if(isset($auth['viewer'])) $next['viewer']=$auth['viewer'];
         return $next;
     });
-    mutateJson('services',fn($rows)=>$rows,defaultServices());
-    mutateJson('attempts',fn()=>[]);
+    mutateJson('services',function($rows) { return $rows; },defaultServices());
+    mutateJson('attempts',function() { return []; });
     audit($command==='init'?'admin_created':($command==='set-viewer'?'viewer_saved':'password_reset'));
 }

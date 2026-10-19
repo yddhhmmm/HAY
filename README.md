@@ -15,10 +15,14 @@ Learn and Do That — dashboard PHP untuk Windows/XAMPP, konfigurasi JSON, tanpa
 
 ## Persyaratan
 
-- Windows 10/11, Windows PowerShell 5.1 dengan CIM, dan XAMPP dengan **PHP 8.1 atau lebih baru** (disarankan versi PHP yang masih menerima pembaruan keamanan).
+- Windows 10/11, Windows PowerShell 5.1 dengan CIM, dan XAMPP dengan **PHP 7.3, 7.4, atau PHP 8.x**.
 - Apache dengan `mod_authz_core`, izin `.htaccess` (AllowOverride yang sesuai), dan ekstensi PHP session/JSON. `proc_open` diperlukan pada **PHP CLI collector**, bukan untuk menjalankan perintah dari web.
 - Ekstensi `mysqli` hanya untuk statistik MySQL; kegagalannya tidak menghentikan metrik lain.
 - Tidak perlu menginstal SQLite, Composer, Node.js, atau database baru.
+
+PHP 7.3 dan 7.4 sudah tidak menerima pembaruan keamanan resmi. Dukungan kompatibilitas aplikasi tidak memperbaiki celah pada runtime PHP itu sendiri; pertahankan akses lokal bawaan dan gunakan runtime yang masih didukung jika nantinya perlu layanan jaringan yang lebih luas.
+
+Untuk memperbarui versi lama, salin **seluruh file kode**, termasuk `src/compat.php`, `bin/check-php.php`, dan launcher CMD. Jangan hanya mengganti `bootstrap.php` atau `index.php`. Data `hay-private` tetap dipertahankan. Tidak diperlukan perubahan konfigurasi Apache untuk penyesuaian versi PHP ini.
 
 ## Pemasangan XAMPP
 
@@ -88,7 +92,7 @@ set "HAY_PHP=D:\lokasi-xampp\php\php.exe"
 setup.cmd
 ```
 
-Lokasi folder proyek di drive D tidak berarti XAMPP juga di D. Gunakan lokasi executable PHP yang sebenarnya, versi 8.1 atau lebih baru.
+Lokasi folder proyek di drive D tidak berarti XAMPP juga di D. Gunakan lokasi executable PHP yang sebenarnya, minimal versi 7.3; launcher menampilkan versi aktif sebelum setup.
 
 CMD menampilkan **URL setup sementara**. Salin URL tersebut ke browser di laptop yang sama. Isi username (default `admin`), password **12–72 byte**, dan konfirmasi password, lalu simpan. Input password tersembunyi di browser, tidak dimasukkan sebagai argumen CMD. Jangan bagikan URL setup, password, atau screenshot yang memuat token URL.
 
@@ -211,3 +215,5 @@ Pengujian Linux tidak membuktikan CIM, PowerShell 5.1, NTFS, Task Scheduler, ata
 Tes browser opsional: `node tests/browser-smoke.cjs`, memerlukan Playwright dan Chromium pada mesin pengembangan. Gunakan `PHP_BIN` dan `CHROMIUM_BIN` jika executable tidak berada pada lokasi default. Fixture metrik dalam tes browser bersifat sintetis dan bukan hasil pembacaan laptop.
 
 Tes browser wizard setup: `node tests/setup-browser.cjs` (Playwright/Chromium). Alur setup menggunakan server PHP loopback sementara; pengujian Linux tidak menggantikan uji launcher `.cmd` dan ACL di Windows.
+
+Pengujian memakai executable PHP yang dipilih beserta konfigurasi PHP.ini-nya; pastikan JSON dan session aktif seperti pada XAMPP standar. Pada PHP 7.3, helper proses menggunakan quoting argumen Windows dengan `bypass_shell=true`; pada POSIX memakai argumen ter-escape dan `exec` agar penghentian server setup tepat sasaran. Pada PHP 7.4+ digunakan argument array native.

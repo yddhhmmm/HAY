@@ -1,5 +1,7 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/compat.php';
+if(PHP_VERSION_ID<70300) throw new RuntimeException('HAY memerlukan PHP minimal 7.3; versi aktif: '.PHP_VERSION);
 const HAY_ROOT = __DIR__ . '/..';
 // Satu sumber lokasi untuk web, CLI, dan skrip setup; tidak bergantung pada DOCUMENT_ROOT.
 function defaultStorageLocation(string $projectRoot): string {
@@ -28,11 +30,11 @@ function storage(): string {
     $doc = $_SERVER['DOCUMENT_ROOT'] ?? '';
     if ($doc && ($root = realpath($doc))) {
         $a = strtolower(str_replace('\\', '/', $resolved)); $b = strtolower(rtrim(str_replace('\\', '/', $root), '/'));
-        if ($a === $b || str_starts_with($a, $b . '/')) throw new RuntimeException('HAY_STORAGE wajib di luar document root.');
+        if ($a === $b || hayStartsWith($a, $b . '/')) throw new RuntimeException('HAY_STORAGE wajib di luar document root.');
     }
     return $path = $resolved;
 }
-function loadJson(string $name, mixed $default = []): mixed {
+function loadJson(string $name, $default = []) {
     $file = storage() . '/' . $name . '.json';
     if (!file_exists($file)) return $default;
     $handle = fopen(storage() . '/' . $name . '.lock', 'c');
@@ -40,7 +42,7 @@ function loadJson(string $name, mixed $default = []): mixed {
     try { $value=json_decode(file_get_contents($file), true, 512, JSON_THROW_ON_ERROR); if($name==='services') validateServicesDocument($value); return $value; }
     finally { flock($handle, LOCK_UN); fclose($handle); }
 }
-function mutateJson(string $name, callable $fn, mixed $default = [], bool $backup = false): mixed {
+function mutateJson(string $name, callable $fn, $default = [], bool $backup = false) {
     $lock = fopen(storage() . '/' . $name . '.lock', 'c');
     if (!$lock || !flock($lock, LOCK_EX)) throw new RuntimeException('Penyimpanan sedang sibuk.');
     $tmp = null;
@@ -61,7 +63,7 @@ function mutateJson(string $name, callable $fn, mixed $default = [], bool $backu
     } finally { if ($tmp && file_exists($tmp)) unlink($tmp); flock($lock, LOCK_UN); fclose($lock); }
 }
 function defaultServices(): array {
-    return array_map(fn($port) => ['id' => bin2hex(random_bytes(8)), 'name' => 'Layanan ' . $port, 'port' => $port, 'type' => 'tcp', 'path' => '/health', 'expected' => 200, 'enabled' => true], [2025,2026,9000,9001,9002,9003,9004]);
+    return array_map(function($port) { return ['id' => bin2hex(random_bytes(8)), 'name' => 'Layanan ' . $port, 'port' => $port, 'type' => 'tcp', 'path' => '/health', 'expected' => 200, 'enabled' => true]; }, [2025,2026,9000,9001,9002,9003,9004]);
 }
 function validateService(array $input): array {
     if(!is_string($input['name']??null)||!is_string($input['path']??'/health')||!is_bool($input['enabled']??true)) throw new InvalidArgumentException('Tipe input layanan tidak valid.');
@@ -73,12 +75,12 @@ function validateService(array $input): array {
     if ($name === '' || strlen($name) > 80 || preg_match('/[\x00-\x1f\x7f]/', $name) || !preg_match('//u', $name)) throw new InvalidArgumentException('Nama wajib diisi, maksimal 80 byte.');
     if (!$port || $port < 1 || $port > 65535) throw new InvalidArgumentException('Port harus 1–65535.');
     if (!in_array($type, ['tcp','http'], true)) throw new InvalidArgumentException('Jenis pemeriksaan tidak valid.');
-    if (!preg_match('~^/(?!/)[A-Za-z0-9/_\.\-?=&%]*$~D', $path) || strlen($path) > 200 || str_contains($path, '..')) throw new InvalidArgumentException('Path lokal tidak valid.');
+    if (!preg_match('~^/(?!/)[A-Za-z0-9/_\.\-?=&%]*$~D', $path) || strlen($path) > 200 || hayContains($path, '..')) throw new InvalidArgumentException('Path lokal tidak valid.');
     if ($expected < 200 || $expected > 599) throw new InvalidArgumentException('Kode HTTP harus 200–599.');
     return ['name'=>$name,'port'=>$port,'type'=>$type,'path'=>$path,'expected'=>$expected,'enabled'=>($input['enabled'] ?? true) === true];
 }
-function validateServicesDocument(mixed $rows): void {
-    if(!is_array($rows)||!array_is_list($rows)||count($rows)>20) throw new RuntimeException('Struktur services.json tidak valid.');
+function validateServicesDocument($rows): void {
+    if(!is_array($rows)||!hayArrayIsList($rows)||count($rows)>20) throw new RuntimeException('Struktur services.json tidak valid.');
     $ids=[];$ports=[];
     foreach($rows as $row) {
         if(!is_array($row)||!is_string($row['id']??null)||!preg_match('/^[a-f0-9]{16}$/D',$row['id'])) throw new RuntimeException('ID dalam services.json tidak valid.');
@@ -106,14 +108,14 @@ function webInit(): void {
     if(!session_start()) throw new RuntimeException('Session tidak dapat dimulai. Periksa session.save_path.');
     if (isset($_SESSION['last']) && time() - $_SESSION['last'] > 1800) $_SESSION = [];
     if (isset($_SESSION['created']) && time() - $_SESSION['created'] > 28800) $_SESSION = [];
-    $_SESSION['csrf'] ??= bin2hex(random_bytes(32));
+    if(!isset($_SESSION['csrf'])) $_SESSION['csrf']=bin2hex(random_bytes(32));
     if (isset($_SESSION['user'])) {
         $auth = loadJson('auth');
         if (!hash_equals((string)($auth['version'] ?? ''), (string)($_SESSION['version'] ?? ''))) $_SESSION = ['csrf'=>bin2hex(random_bytes(32))];
         elseif(!in_array($_GET['action']??'', ['snapshot','session'],true)) $_SESSION['last'] = time();
     }
 }
-function reply(mixed $value, int $code = 200): never {
+function reply($value, int $code = 200): void {
     http_response_code($code); header('Content-Type: application/json; charset=utf-8');
     echo json_encode($value, JSON_THROW_ON_ERROR); exit;
 }

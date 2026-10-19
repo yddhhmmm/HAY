@@ -7,7 +7,7 @@ const {tmpdir}=require('node:os');
 const assert=require('node:assert/strict');
 (async()=>{
  const storage=mkdtempSync(join(tmpdir(),'hay-setup-browser-'));
- const child=spawn(process.env.PHP_BIN||'php',['-n',resolve(__dirname,'../bin/setup-console.php')],{env:{...process.env,HAY_STORAGE:storage},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.env.PHP_BIN||'php',[resolve(__dirname,'../bin/setup-console.php')],{env:{...process.env,HAY_STORAGE:storage},stdio:['ignore','pipe','pipe']});
  let browser,output='';
  try {
   const exited=new Promise(resolve=>child.once('exit',code=>resolve(code)));
